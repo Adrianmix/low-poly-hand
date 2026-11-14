@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Low-Poly 3D Hand</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Three.js & OrbitControls (r128) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background-color: #0b0e14;
+            color: #f8fafc;
+            user-select: none;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        /* Custom sleek scrollbar for control panel */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.4);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.3);
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.5);
+        }
+        /* Custom range input styling */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(30, 41, 59, 0.8);
+            height: 6px;
+            border-radius: 999px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #38bdf8;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+            transition: transform 0.15s ease, background-color 0.15s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            background: #7dd3fc;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.72);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
+        }
+        .preset-btn.active {
+            background: linear-gradient(135deg, #0284c7, #2563eb);
+            border-color: #38bdf8;
+            color: #ffffff;
+            box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4);
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- 3D WebGL Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <!-- Top-Left Title & Status Badge -->
+    <div class="fixed top-4 left-4 z-10 pointer-events-none max-w-xs sm:max-w-sm">
+        <div class="glass-panel rounded-2xl p-4 pointer-events-auto">
+            <div class="flex items-center gap-2.5">
+                <div class="w-3 h-3 rounded-full bg-sky-400 animate-pulse shadow-[0_0_10px_#38bdf8]"></div>
+                <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">Low-Poly Hand Rig</h1>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 leading-relaxed">
+                Procedural faceted anatomy with articulated phalanges. Drag to orbit, scroll to zoom, right-drag to pan.
+            </p>
+        </div>
+    </div>
+
+    <!-- Mobile Toggle Button for Control Panel -->
+    <button id="toggle-panel-btn" class="fixed top-4 right-4 z-20 md:hidden glass-panel p-3 rounded-xl text-slate-200 hover:text-white active:scale-95 transition">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+        </svg>
+    </button>
+
+    <!-- Right-Side Interactive Control Panel -->
+    <aside id="control-panel" class="fixed top-4 right-4 bottom-4 z-10 w-[calc(100vw-2rem)] sm:w-80 md:w-88 glass-panel rounded-2xl flex flex-col overflow-hidden transition-transform duration-300 translate-x-[110%] md:translate-x-0">
+        <!-- Panel Header -->
+        <div class="px-5 py-4 border-b border-slate-800/80 flex items-center justify-between">
+            <span class="text-xs font-semibold uppercase tracking-wider text-sky-400">Articulation & Style</span>
+            <button id="reset-camera-btn" class="text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded-lg border border-slate-700/60 transition">
+                Reset View
+            </button>
+        </div>
+
+        <!-- Scrollable Controls Body -->
+        <div class="p-5 overflow-y-auto space-y-6 flex-1">
+            
+            <!-- Preset Gestures -->
+            <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2.5">Preset Gestures</label>
+                <div class="grid grid-cols-2 gap-2" id="preset-grid">
+                    <button data-preset="open" class="preset-btn active text-xs font-medium py-2 px-3 rounded-xl bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 transition text-left flex items-center gap-2">
+                        <span>🖐️</span> Open Hand
+                    </button>
+                    <button data-preset="fist" class="preset-btn text-xs font-medium py-2 px-3 rounded-xl bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 transition text-left flex items-center gap-2">
+                        <span>✊</span> Fist
+                    </button>
+                    <button data-preset="peace" class="preset-btn text-xs font-medium py-2 px-3 rounded-xl bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 transition text-left flex items-center gap-2">
+                        <span>✌️</span> Peace Sign
+                    </button>
+                    <button data-preset="thumbsup" class="preset-btn text-xs font-medium py-2 px-3 rounded-xl bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 transition text-left flex items-center gap-2">
+                        <span>👍</span> Thumbs Up
+                    </button>
+                    <button data-preset="rock" class="preset-btn text-xs font-medium py-2 px-3 rounded-xl bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 transition text-left flex items-center gap-2">
+                        <span>🤘</span> Rock On
+                    </button>
+                    <button data-preset="wave" class="preset-btn text-xs font-medium py-2 px-3 rounded-xl bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 transition text-left flex items-center gap-2">
+                        <span>👋</span> Wave Anim
+                    </button>
+                </div>
+            </div>
+
+            <!-- Individual Finger Controls -->
+            <div>
+                <div class="flex items-center justify-between mb-2.5">
+                    <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Finger Posing</label>
+                    <span class="text-[11px] font-mono text-slate-500">Curl / Spread</span>
+                </div>
+                <div id="finger-sliders" class="space-y-3.5">
+                    <!-- Dynamically populated by JS -->
+                </div>
+            </div>
+
+            <!-- Wrist Rotation -->
+            <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2.5">Wrist Orientation</label>
+                <div class="space-y-2.5 bg-slate-900/50 p-3 rounded-xl border border-slate-800/60">
+                    <div>
+                        <div class="flex justify-between text-xs text-slate-300 mb-1">
+                            <span>Flex / Extend</span>
+                            <span id="wrist-x-val" class="font-mono text-sky-400">0°</span>
+                        </div>
+                        <input type="range" id="wrist-x" min="-45" max="45" value="0" class="w-full">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs text-slate-300 mb-1">
+                            <span>Twist (Pronate/Supinate)</span>
+                            <span id="wrist-y-val" class="font-mono text-sky-400">0°</span>
+                        </div>
+                        <input type="range" id="wrist-y" min="-60" max="60" value="0" class="w-full">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Material & Shading Options -->
+            <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2.5">Material & Shading</label>
+                <div class="grid grid-cols-2 gap-2 mb-3">
+                    <button id="toggle-wireframe" class="text-xs font-medium py-2 px-3 rounded-xl bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 transition flex items-center justify-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-slate-500" id="wireframe-dot"></span> Wireframe
+                    </button>
+                    <button id="toggle-flat" class="text-xs font-medium py-2 px-3 rounded-xl bg-sky-500/20 border border-sky-500/50 text-sky-300 transition flex items-center justify-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-sky-400" id="flat-dot"></span> Flat Facets
+                    </button>
+                </div>
+
+                <!-- Color Palette Swatches + Custom Pickers -->
+                <div class="bg-slate-900/50 p-3 rounded-xl border border-slate-800/60 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-slate-300">Theme Presets</span>
+                        <div class="flex gap-1.5" id="color-swatches">
+                            <button data-primary="#e2a887" data-joint="#c47d5b" data-accent="#f4cbb2" class="w-5 h-5 rounded-full border border-white/30 shadow-sm hover:scale-110 transition" style="background: #e2a887;" title="Warm Clay"></button>
+                            <button data-primary="#38bdf8" data-joint="#0284c7" data-accent="#bae6fd" class="w-5 h-5 rounded-full border border-white/30 shadow-sm hover:scale-110 transition" style="background: #38bdf8;" title="Cyber Glacier"></button>
+                            <button data-primary="#a78bfa" data-joint="#6d28d9" data-accent="#ddd6fe" class="w-5 h-5 rounded-full border border-white/30 shadow-sm hover:scale-110 transition" style="background: #a78bfa;" title="Amethyst Poly"></button>
+                            <button data-primary="#34d399" data-joint="#059669" data-accent="#a7f3d0" class="w-5 h-5 rounded-full border border-white/30 shadow-sm hover:scale-110 transition" style="background: #34d399;" title="Jade Facet"></button>
+                            <button data-primary="#f8fafc" data-joint="#94a3b8" data-accent="#cbd5e1" class="w-5 h-5 rounded-full border border-white/30 shadow-sm hover:scale-110 transition" style="background: #f8fafc;" title="Porcelain"></button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800">
+                        <label class="flex items-center justify-between text-xs text-slate-400 bg-slate-800/50 px-2.5 py-1.5 rounded-lg cursor-pointer">
+                            <span>Skin / Shell</span>
+                            <input type="color" id="primary-color" value="#e2a887" class="w-5 h-5 bg-transparent border-0 cursor-pointer rounded">
+                        </label>
+                        <label class="flex items-center justify-between text-xs text-slate-400 bg-slate-800/50 px-2.5 py-1.5 rounded-lg cursor-pointer">
+                            <span>Joints</span>
+                            <input type="color" id="joint-color" value="#c47d5b" class="w-5 h-5 bg-transparent border-0 cursor-pointer rounded">
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </aside>
+
+    <script>
+        /**
+         * Interactive 3D Low-Poly Stylized Hand
+         * Built with Three.js (r128) featuring procedural faceted anatomy,
+         * hierarchical bone/joint rigging, smooth gesture interpolation,
+         * dramatic 3-point studio lighting, and responsive UI controls.
+         */
+
+        // Global Scene Variables
+        let scene, camera, renderer, controls;
+        let handRoot, wristPivot, palmGroup;
+        let wireframeOverlayGroup;
+        let clock = new THREE.Clock();
+
+        // Materials
+        let primaryMaterial, jointMaterial, accentMaterial, wireframeMaterial;
+        let isWireframe = false;
+        let isFlatShading = true;
+
+        // Finger Articulation State
+        // Each finger has current and target curl (0 to 1) and spread (-1 to 1)
+        const fingerConfigs = [
+            { id: 'thumb',  name: 'Thumb',  length: [0.95, 0.80, 0.65], radius: [0.34, 0.30, 0.25], basePos: [-1.18, -0.55, 0.28], baseRotZ: 0.78, baseRotY: 0.55 },
+            { id: 'index',  name: 'Index',  length: [1.15, 0.85, 0.65], radius: [0.30, 0.26, 0.21], basePos: [-0.95, 1.32, 0.05],  baseRotZ: 0.08, baseRotY: 0.0 },
+            { id: 'middle', name: 'Middle', length: [1.28, 0.95, 0.70], radius: [0.31, 0.27, 0.22], basePos: [-0.32, 1.42, 0.08],  baseRotZ: 0.02, baseRotY: 0.0 },
+            { id: 'ring',   name: 'Ring',   length: [1.18, 0.88, 0.66], radius: [0.29, 0.25, 0.20], basePos: [0.32,  1.35, 0.04],  baseRotZ: -0.04, baseRotY: 0.0 },
+            { id: 'pinky',  name: 'Pinky',  length: [0.92, 0.68, 0.54], radius: [0.25, 0.22, 0.18], basePos: [0.92,  1.15, -0.02], baseRotZ: -0.10, baseRotY: 0.0 }
+        ];
+
+        const fingerState = {};
+        const fingerRigs = {};
+        let activePreset = 'open';
+        let wristTarget = { x: 0, y: 0 };
+        let wristCurrent = { x: 0, y: 0 };
+
+        // Gesture Definitions (curl: 0 = straight, 1 = fully curled; spread: -1 to 1)
+        const PRESETS = {
+            open: {
+                thumb:  { curl: 0.08, spread: 0.25 },
+                index:  { curl: 0.05, spread: 0.20 },
+                middle: { curl: 0.05, spread: 0.05 },
+                ring:   { curl: 0.06, spread: -0.10 },
+                pinky:  { curl: 0.08, spread: -0.25 },
+                wrist:  { x: 0, y: 0 }
+            },
+            fist: {
+                thumb:  { curl: 0.85, spread: -0.35 },
+                index:  { curl: 0.95, spread: -0.05 },
+                middle: { curl: 0.98, spread: 0.0 },
+                ring:   { curl: 0.98, spread: 0.05 },
+                pinky:  { curl: 0.98, spread: 0.10 },
+                wrist:  { x: 5, y: 0 }
+            },
+            peace: {
+                thumb:  { curl: 0.78, spread: -0.30 },
+                index:  { curl: 0.02, spread: 0.35 },
+                middle: { curl: 0.02, spread: -0.25 },
+                ring:   { curl: 0.95, spread: 0.05 },
+                pinky:  { curl: 0.95, spread: 0.12 },
+                wrist:  { x: -5, y: 12 }
+            },
+            thumbsup: {
+                thumb:  { curl: 0.0,  spread: 0.45 },
+                index:  { curl: 0.95, spread: -0.05 },
+                middle: { curl: 0.96, spread: 0.0 },
+                ring:   { curl: 0.96, spread: 0.05 },
+                pinky:  { curl: 0.96, spread: 0.10 },
+                wrist:  { x: 0, y: -35 }
+            },
+            rock: {
+                thumb:  { curl: 0.65, spread: 0.10 },
+                index:  { curl: 0.02, spread: 0.22 },
+                middle: { curl: 0.96, spread: 0.0 },
+                ring:   { curl: 0.96, spread: 0.0 },
+                pinky:  { curl: 0.02, spread: -0.28 },
+                wrist:  { x: -10, y: 8 }
+            },
+            wave: {
+                thumb:  { curl: 0.12, spread: 0.30 },
+                index:  { curl: 0.06, spread: 0.22 },
+                middle: { curl: 0.05, spread: 0.05 },
+                ring:   { curl: 0.06, spread: -0.10 },
+                pinky:  { curl: 0.08, spread: -0.24 },
+                wrist:  { x: 0, y: 0 }
+            }
+        };
+
+        /**
+         * Helper: Converts any BufferGeometry into crisp flat-faceted low-poly geometry
+         * with optional subtle organic vertex perturbation for an artistic sculpted look.
+         */
+        function makeFacetedGeometry(geometry, jitterAmount = 0.015) {
+            const nonIndexed = geometry.index ? geometry.toNonIndexed() : geometry.clone();
+            const pos = nonIndexed.attributes.position;
+
+            // Apply deterministic vertex jitter by snapping nearby vertices to the same offset
+            if (jitterAmount > 0) {
+                const vertexMap = new Map();
+                const v = new THREE.Vector3();
+                for (let i = 0; i < pos.count; i++) {
+                    v.fromBufferAttribute(pos, i);
+                    const key = `${Math.round(v.x * 100)},${Math.round(v.y * 100)},${Math.round(v.z * 100)}`;
+                    if (!vertexMap.has(key)) {
+                        // Deterministic pseudo-random offset based on coordinates
+                        const hash = Math.sin(v.x * 12.9898 + v.y * 78.233 + v.z * 37.719) * 43758.5453;
+                        const rand1 = (hash - Math.floor(hash)) - 0.5;
+                        const rand2 = ((hash * 1.3) - Math.floor(hash * 1.3)) - 0.5;
+                        const rand3 = ((hash * 1.7) - Math.floor(hash * 1.7)) - 0.5;
+                        vertexMap.set(key, new THREE.Vector3(
+                            rand1 * jitterAmount,
+                            rand2 * jitterAmount,
+                            rand3 * jitterAmount
+                        ));
+                    }
+                    const offset = vertexMap.get(key);
+                    pos.setXYZ(i, v.x + offset.x, v.y + offset.y, v.z + offset.z);
+                }
+            }
+
+            nonIndexed.computeVertexNormals();
+            return nonIndexed;
+        }
+
+        /**
+         * Builds a stylized low-poly phalanx bone segment tapered from base to tip
+         */
+        function createPhalanxMesh(rBottom, rTop, length, isTip = false) {
+            const radialSegments = 7; // Odd number creates bold asymmetrical facets
+            const heightSegments = isTip ? 2 : 1;
+            const geom = new THREE.CylinderGeometry(rTop, rBottom, length, radialSegments, heightSegments, false);
+
+            // Slightly flatten front-to-back (Z axis) for anatomical finger proportion
+            geom.scale(1.0, 1.0, 0.84);
+            // Translate so pivot is cleanly at the bottom joint center (y = 0)
+            geom.translate(0, length / 2, 0);
+
+            // Taper distal tip into a stylized low-poly dome
+            if (isTip) {
+                const pos = geom.attributes.position;
+                const v = new THREE.Vector3();
+                for (let i = 0; i < pos.count; i++) {
+                    v.fromBufferAttribute(pos, i);
+                    if (v.y > length * 0.85) {
+                        v.x *= 0.62;
+                        v.z *= 0.58;
+                        v.y += 0.04;
+                    }
+                    pos.setXYZ(i, v.x, v.y, v.z);
+                }
+            }
+
+            const faceted = makeFacetedGeometry(geom, 0.012);
+            const mesh = new THREE.Mesh(faceted, primaryMaterial);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+
+            // Add subtle fingernail facet on the dorsal side of distal phalanx
+            if (isTip) {
+                const nailGeom = new THREE.CylinderGeometry(rTop * 0.52, rTop * 0.68, length * 0.48, 5, 1);
+                nailGeom.scale(1.0, 1.0, 0.35);
+                nailGeom.translate(0, length * 0.65, -rTop * 0.52);
+                const nailFaceted = makeFacetedGeometry(nailGeom, 0.004);
+                const nailMesh = new THREE.Mesh(nailFaceted, accentMaterial);
+                nailMesh.castShadow = true;
+                mesh.add(nailMesh);
+            }
+
+            return mesh;
+        }
+
+        /**
+         * Builds a low-poly faceted knuckle / joint sphere
+         */
+        function createJointMesh(radius) {
+            const geom = new THREE.IcosahedronGeometry(radius, 1);
+            geom.scale(1.02, 0.92, 0.88);
+            const faceted = makeFacetedGeometry(geom, 0.012);
+            const mesh = new THREE.Mesh(faceted, jointMaterial);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            return mesh;
+        }
+
+        /**
+         * Constructs the stylized low-poly palm, forearm cuff, and all 5 articulated fingers
+         */
+        function buildStylizedHand() {
+            handRoot = new THREE.Group();
+            scene.add(handRoot);
+
+            // Forearm / Cuff Base (anchored slightly above floor)
+            const cuffGeom = new THREE.CylinderGeometry(0.88, 1.08, 1.45, 8, 2);
+            cuffGeom.scale(1.12, 1.0, 0.78);
+            const cuffMesh = new THREE.Mesh(makeFacetedGeometry(cuffGeom, 0.025), jointMaterial);
+            cuffMesh.position.set(0, 0.85, 0);
+            cuffMesh.castShadow = true;
+            cuffMesh.receiveShadow = true;
+            handRoot.add(cuffMesh);
+
+            // Decorative Geometric Wrist Collar Ring
+            const collarGeom = new THREE.CylinderGeometry(0.95, 0.95, 0.22, 8, 1);
+            collarGeom.scale(1.14, 1.0, 0.80);
+            const collarMesh = new THREE.Mesh(makeFacetedGeometry(collarGeom, 0.01), accentMaterial);
+            collarMesh.position.set(0, 1.56, 0);
+            collarMesh.castShadow = true;
+            handRoot.add(collarMesh);
+
+            // Wrist Pivot Group
+            wristPivot = new THREE.Group();
+            wristPivot.position.set(0, 1.72, 0);
+            handRoot.add(wristPivot);
+
+            // Wrist Joint Sphere
+            const wristJoint = createJointMesh(0.82);
+            wristJoint.scale.set(1.18, 0.68, 0.78);
+            wristPivot.add(wristJoint);
+
+            // Palm Group
+            palmGroup = new THREE.Group();
+            palmGroup.position.set(0, 0.15, 0);
+            wristPivot.add(palmGroup);
+
+            // Sculpted Low-Poly Palm Core (tapered trapezoidal polyhedron)
+            const palmGeom = new THREE.CylinderGeometry(1.26, 0.88, 2.35, 8, 3);
+            palmGeom.translate(0, 1.18, 0);
+            const pos = palmGeom.attributes.position;
+            const v = new THREE.Vector3();
+
+            for (let i = 0; i < pos.count; i++) {
+                v.fromBufferAttribute(pos, i);
+                // Flatten depth (Z) for realistic palm thickness
+                v.z *= 0.44;
+
+                // Subtle anatomical palmar arch & knuckle ridge
+                const normalizedY = v.y / 2.35;
+                if (normalizedY > 0.75) {
+                    // Arch across the knuckles (middle higher than pinky/index)
+                    const arch = Math.cos(v.x * 1.1) * 0.18;
+                    v.y += arch;
+                }
+                // Concave cup in the center of the palm (+Z is palmar side)
+                if (v.z > 0 && normalizedY > 0.25 && normalizedY < 0.8) {
+                    const distFromCenter = Math.hypot(v.x, (normalizedY - 0.5) * 2.0);
+                    v.z -= Math.max(0, (1.0 - distFromCenter) * 0.16);
+                }
+                // Thenar eminence (muscular thumb base bulge)
+                if (v.x < -0.35 && normalizedY < 0.55 && v.z > 0) {
+                    v.z += 0.22 * (1.0 - normalizedY);
+                    v.x -= 0.14 * (1.0 - normalizedY);
+                }
+
+                pos.setXYZ(i, v.x, v.y, v.z);
+            }
+
+            const palmMesh = new THREE.Mesh(makeFacetedGeometry(palmGeom, 0.025), primaryMaterial);
+            palmMesh.castShadow = true;
+            palmMesh.receiveShadow = true;
+            palmGroup.add(palmMesh);
+
+            // Build Each Finger & Thumb with 3 Articulated Joints (MCP, PIP, DIP)
+            fingerConfigs.forEach(cfg => {
+                // Initialize state
+                fingerState[cfg.id] = {
+                    curl: PRESETS.open[cfg.id].curl,
+                    spread: PRESETS.open[cfg.id].spread,
+                    targetCurl: PRESETS.open[cfg.id].curl,
+                    targetSpread: PRESETS.open[cfg.id].spread
+                };
+
+                // Root anchor on palm
+                const baseAnchor = new THREE.Group();
+                baseAnchor.position.set(cfg.basePos[0], cfg.basePos[1] + 1.15, cfg.basePos[2]);
+                baseAnchor.rotation.z = cfg.baseRotZ;
+                baseAnchor.rotation.y = cfg.baseRotY;
+                palmGroup.add(baseAnchor);
+
+                // Thumb gets extra forward/inward opposition orientation
+                if (cfg.id === 'thumb') {
+                    baseAnchor.position.set(-1.05, 0.72, 0.28);
+                    baseAnchor.rotation.set(0.28, 0.75, 0.82);
+                }
+
+                // Joint 1: Metacarpophalangeal (Knuckle / MCP)
+                const mcpJoint = new THREE.Group();
+                baseAnchor.add(mcpJoint);
+                mcpJoint.add(createJointMesh(cfg.radius[0] * 1.05));
+
+                const proximalMesh = createPhalanxMesh(cfg.radius[0], cfg.radius[1], cfg.length[0], false);
+                mcpJoint.add(proximalMesh);
+
+                // Joint 2: Proximal Interphalangeal (Middle / PIP)
+                const pipJoint = new THREE.Group();
+                pipJoint.position.set(0, cfg.length[0], 0);
+                mcpJoint.add(pipJoint);
+                pipJoint.add(createJointMesh(cfg.radius[1] * 1.04));
+
+                const middleMesh = createPhalanxMesh(cfg.radius[1], cfg.radius[2], cfg.length[1], false);
+                pipJoint.add(middleMesh);
+
+                // Joint 3: Distal Interphalangeal (Tip / DIP)
+                const dipJoint = new THREE.Group();
+                dipJoint.position.set(0, cfg.length[1], 0);
+                pipJoint.add(dipJoint);
+                dipJoint.add(createJointMesh(cfg.radius[2] * 1.03));
+
+                const distalMesh = createPhalanxMesh(cfg.radius[2], cfg.radius[2] * 0.72, cfg.length[2], true);
+                dipJoint.add(distalMesh);
+
+                fingerRigs[cfg.id] = {
+                    baseAnchor,
+                    mcpJoint,
+                    pipJoint,
+                    dipJoint,
+                    config: cfg
+                };
+            });
+        }
+
+        /**
+         * Initializes Three.js Scene, Camera, Renderer, Dramatic Lighting, and Ground Grid
+         */
+        function initScene() {
+            const container = document.getElementById('canvas-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color('#0b0e14');
+            scene.fog = new THREE.FogExp2('#0b0e14', 0.032);
+
+            // Perspective Camera
+            camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0.6, 5.2, 10.5);
+
+            // WebGL Renderer with Soft Shadows & Tone Mapping
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.12;
+            container.appendChild(renderer.domElement);
+
+            // OrbitControls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.target.set(0, 3.6, 0);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.06;
+            controls.minDistance = 4.5;
+            controls.maxDistance = 22;
+            controls.maxPolarAngle = Math.PI / 2 - 0.03; // Prevent clipping beneath floor
+            controls.update();
+
+            // Materials (MeshStandardMaterial with flatShading for crisp low-poly facets)
+            primaryMaterial = new THREE.MeshStandardMaterial({
+                color: new THREE.Color('#e2a887'),
+                roughness: 0.52,
+                metalness: 0.08,
+                flatShading: true
+            });
+
+            jointMaterial = new THREE.MeshStandardMaterial({
+                color: new THREE.Color('#c47d5b'),
+                roughness: 0.45,
+                metalness: 0.12,
+                flatShading: true
+            });
+
+            accentMaterial = new THREE.MeshStandardMaterial({
+                color: new THREE.Color('#f4cbb2'),
+                roughness: 0.35,
+                metalness: 0.15,
+                flatShading: true
+            });
+
+            // Dramatic 3-Point Studio Lighting
+            const hemiLight = new THREE.HemisphereLight('#93c5fd', '#1e293b', 0.55);
+            scene.add(hemiLight);
+
+            // Key Light (Warm Directional with Crisp Shadows)
+            const keyLight = new THREE.DirectionalLight('#fff7ed', 1.45);
+            keyLight.position.set(5.5, 11.5, 6.5);
+            keyLight.castShadow = true;
+            keyLight.shadow.mapSize.width = 2048;
+            keyLight.shadow.mapSize.height = 2048;
+            keyLight.shadow.camera.near = 2;
+            keyLight.shadow.camera.far = 25;
+            const d = 5.5;
+            keyLight.shadow.camera.left = -d;
+            keyLight.shadow.camera.right = d;
+            keyLight.shadow.camera.top = d + 2;
+            keyLight.shadow.camera.bottom = -d;
+            keyLight.shadow.bias = -0.0005;
+            scene.add(keyLight);
+
+            // Cool Rim / Back Light (Highlights low-poly silhouette edges)
+            const rimLight = new THREE.DirectionalLight('#38bdf8', 0.95);
+            rimLight.position.set(-6.0, 7.5, -6.5);
+            scene.add(rimLight);
+
+            // Subtle Fill Light from left-front
+            const fillLight = new THREE.DirectionalLight('#c084fc', 0.35);
+            fillLight.position.set(-6.0, 3.0, 4.5);
+            scene.add(fillLight);
+
+            // Crisp Ground Plane & Architectural Grid
+            const groundGeo = new THREE.PlaneGeometry(60, 60);
+            const groundMat = new THREE.MeshStandardMaterial({
+                color: '#0f141e',
+                roughness: 0.85,
+                metalness: 0.1
+            });
+            const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+            groundMesh.rotation.x = -Math.PI / 2;
+            groundMesh.receiveShadow = true;
+            scene.add(groundMesh);
+
+            // Crisp Primary & Secondary Grid Helper
+            const gridHelper = new THREE.GridHelper(24, 24, '#38bdf8', '#1e293b');
+            gridHelper.position.y = 0.005;
+            gridHelper.material.opacity = 0.38;
+            gridHelper.material.transparent = true;
+            scene.add(gridHelper);
+
+            // Subtle Circular Pedestal Ring beneath the hand
+            const ringGeo = new THREE.RingGeometry(1.65, 1.72, 32);
+            const ringMat = new THREE.MeshBasicMaterial({
+                color: '#38bdf8',
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.35
+            });
+            const pedestalRing = new THREE.Mesh(ringGeo, ringMat);
+            pedestalRing.rotation.x = -Math.PI / 2;
+            pedestalRing.position.y = 0.01;
+            scene.add(pedestalRing);
+
+            // Build the Hand
+            buildStylizedHand();
+
+            // Build UI Controls
+            setupUI();
+
+            // Window Resize Listener
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        /**
+         * Generates Interactive UI Sliders & Binds All Event Listeners
+         */
+        function setupUI() {
+            const sliderContainer = document.getElementById('finger-sliders');
+
+            fingerConfigs.forEach(cfg => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'bg-slate-900/50 p-3 rounded-xl border border-slate-800/60 space-y-2';
+
+                wrapper.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-slate-200">${cfg.name}</span>
+                        <span id="${cfg.id}-readout" class="text-[11px] font-mono text-sky-400">8% / 25%</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <div>
+                            <div class="flex justify-between text-[10px] text-slate-400 mb-0.5">
+                                <span>Curl</span>
+                            </div>
+                            <input type="range" id="${cfg.id}-curl" min="0" max="100" value="${Math.round(fingerState[cfg.id].curl * 100)}" class="w-full">
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-[10px] text-slate-400 mb-0.5">
+                                <span>Spread</span>
+                            </div>
+                            <input type="range" id="${cfg.id}-spread" min="-100" max="100" value="${Math.round(fingerState[cfg.id].spread * 100)}" class="w-full">
+                        </div>
+                    </div>
+                `;
+                sliderContainer.appendChild(wrapper);
+
+                const curlInput = document.getElementById(`${cfg.id}-curl`);
+                const spreadInput = document.getElementById(`${cfg.id}-spread`);
+
+                curlInput.addEventListener('input', (e) => {
+                    clearActivePreset();
+                    fingerState[cfg.id].targetCurl = parseFloat(e.target.value) / 100;
+                    updateFingerReadout(cfg.id);
+                });
+
+                spreadInput.addEventListener('input', (e) => {
+                    clearActivePreset();
+                    fingerState[cfg.id].targetSpread = parseFloat(e.target.value) / 100;
+                    updateFingerReadout(cfg.id);
+                });
+            });
+
+            // Preset Gesture Buttons
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const presetName = btn.getAttribute('data-preset');
+                    applyPreset(presetName);
+                });
+            });
+
+            // Wrist Sliders
+            const wristXInput = document.getElementById('wrist-x');
+            const wristYInput = document.getElementById('wrist-y');
+
+            wristXInput.addEventListener('input', (e) => {
+                clearActivePreset();
+                wristTarget.x = parseFloat(e.target.value);
+                document.getElementById('wrist-x-val').textContent = `${Math.round(wristTarget.x)}°`;
+            });
+
+            wristYInput.addEventListener('input', (e) => {
+                clearActivePreset();
+                wristTarget.y = parseFloat(e.target.value);
+                document.getElementById('wrist-y-val').textContent = `${Math.round(wristTarget.y)}°`;
+            });
+
+            // Wireframe Toggle
+            const wireframeBtn = document.getElementById('toggle-wireframe');
+            const wireframeDot = document.getElementById('wireframe-dot');
+            wireframeBtn.addEventListener('click', () => {
+                isWireframe = !isWireframe;
+                primaryMaterial.wireframe = isWireframe;
+                jointMaterial.wireframe = isWireframe;
+                accentMaterial.wireframe = isWireframe;
+
+                if (isWireframe) {
+                    wireframeBtn.classList.add('bg-sky-500/20', 'border-sky-500/50', 'text-sky-300');
+                    wireframeBtn.classList.remove('bg-slate-800/70', 'border-slate-700/60', 'text-slate-200');
+                    wireframeDot.classList.replace('bg-slate-500', 'bg-sky-400');
+                } else {
+                    wireframeBtn.classList.remove('bg-sky-500/20', 'border-sky-500/50', 'text-sky-300');
+                    wireframeBtn.classList.add('bg-slate-800/70', 'border-slate-700/60', 'text-slate-200');
+                    wireframeDot.classList.replace('bg-sky-400', 'bg-slate-500');
+                }
+            });
+
+            // Flat Shading Toggle
+            const flatBtn = document.getElementById('toggle-flat');
+            const flatDot = document.getElementById('flat-dot');
+            flatBtn.addEventListener('click', () => {
+                isFlatShading = !isFlatShading;
+                primaryMaterial.flatShading = isFlatShading;
+                jointMaterial.flatShading = isFlatShading;
+                accentMaterial.flatShading = isFlatShading;
+                primaryMaterial.needsUpdate = true;
+                jointMaterial.needsUpdate = true;
+                accentMaterial.needsUpdate = true;
+
+                if (isFlatShading) {
+                    flatBtn.classList.add('bg-sky-500/20', 'border-sky-500/50', 'text-sky-300');
+                    flatBtn.classList.remove('bg-slate-800/70', 'border-slate-700/60', 'text-slate-200');
+                    flatDot.classList.replace('bg-slate-500', 'bg-sky-400');
+                } else {
+                    flatBtn.classList.remove('bg-sky-500/20', 'border-sky-500/50', 'text-sky-300');
+                    flatBtn.classList.add('bg-slate-800/70', 'border-slate-700/60', 'text-slate-200');
+                    flatDot.classList.replace('bg-sky-400', 'bg-slate-500');
+                }
+            });
+
+            // Theme Color Swatches
+            const primaryColorInput = document.getElementById('primary-color');
+            const jointColorInput = document.getElementById('joint-color');
+
+            document.querySelectorAll('#color-swatches button').forEach(swatch => {
+                swatch.addEventListener('click', () => {
+                    const p = swatch.getAttribute('data-primary');
+                    const j = swatch.getAttribute('data-joint');
+                    const a = swatch.getAttribute('data-accent');
+
+                    primaryColorInput.value = p;
+                    jointColorInput.value = j;
+                    updateHandColors(p, j, a);
+                });
+            });
+
+            primaryColorInput.addEventListener('input', (e) => {
+                const base = new THREE.Color(e.target.value);
+                const accent = base.clone().offsetHSL(0, -0.05, 0.14);
+                updateHandColors(e.target.value, jointColorInput.value, `#${accent.getHexString()}`);
+            });
+
+            jointColorInput.addEventListener('input', (e) => {
+                updateHandColors(primaryColorInput.value, e.target.value, null);
+            });
+
+            // Reset Camera View Button
+            document.getElementById('reset-camera-btn').addEventListener('click', () => {
+                camera.position.set(0.6, 5.2, 10.5);
+                controls.target.set(0, 3.6, 0);
+                controls.update();
+            });
+
+            // Mobile Panel Drawer Toggle
+            const panel = document.getElementById('control-panel');
+            document.getElementById('toggle-panel-btn').addEventListener('click', () => {
+                panel.classList.toggle('translate-x-[110%]');
+            });
+        }
+
+        function updateHandColors(primaryHex, jointHex, accentHex) {
+            primaryMaterial.color.set(primaryHex);
+            jointMaterial.color.set(jointHex);
+            if (accentHex) {
+                accentMaterial.color.set(accentHex);
+            }
+        }
+
+        function updateFingerReadout(id) {
+            const c = Math.round(fingerState[id].targetCurl * 100);
+            const s = Math.round(fingerState[id].targetSpread * 100);
+            document.getElementById(`${id}-readout`).textContent = `${c}% / ${s}%`;
+        }
+
+        function clearActivePreset() {
+            activePreset = null;
+            document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+        }
+
+        function applyPreset(presetName) {
+            const preset = PRESETS[presetName];
+            if (!preset) return;
+
+            activePreset = presetName;
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-preset') === presetName);
+            });
+
+            fingerConfigs.forEach(cfg => {
+                const data = preset[cfg.id];
+                fingerState[cfg.id].targetCurl = data.curl;
+                fingerState[cfg.id].targetSpread = data.spread;
+
+                // Sync sliders & readouts
+                document.getElementById(`${cfg.id}-curl`).value = Math.round(data.curl * 100);
+                document.getElementById(`${cfg.id}-spread`).value = Math.round(data.spread * 100);
+                updateFingerReadout(cfg.id);
+            });
+
+            wristTarget.x = preset.wrist.x;
+            wristTarget.y = preset.wrist.y;
+            document.getElementById('wrist-x').value = wristTarget.x;
+            document.getElementById('wrist-y').value = wristTarget.y;
+            document.getElementById('wrist-x-val').textContent = `${Math.round(wristTarget.x)}°`;
+            document.getElementById('wrist-y-val').textContent = `${Math.round(wristTarget.y)}°`;
+        }
+
+        /**
+         * Updates Bone Rotations Smoothly Each Frame
+         */
+        function updateArticulation(elapsedTime, delta) {
+            const lerpFactor = Math.min(1, delta * 9.5);
+
+            // Handle Wave Animation if active
+            if (activePreset === 'wave') {
+                const waveCycle = Math.sin(elapsedTime * 4.5);
+                wristPivot.rotation.z = waveCycle * 0.38;
+                wristPivot.rotation.x = Math.sin(elapsedTime * 2.25) * 0.08;
+
+                // Subtle cascading ripple across fingers during wave
+                fingerConfigs.forEach((cfg, idx) => {
+                    if (cfg.id === 'thumb') return;
+                    const ripple = Math.sin(elapsedTime * 4.5 - idx * 0.45) * 0.08 + 0.1;
+                    fingerState[cfg.id].targetCurl = Math.max(0, ripple);
+                });
+            } else {
+                // Smoothly return wrist Z tilt to 0 and apply user X/Y sliders
+                wristPivot.rotation.z = THREE.MathUtils.lerp(wristPivot.rotation.z, 0, lerpFactor);
+                wristCurrent.x = THREE.MathUtils.lerp(wristCurrent.x, THREE.MathUtils.degToRad(wristTarget.x), lerpFactor);
+                wristCurrent.y = THREE.MathUtils.lerp(wristCurrent.y, THREE.MathUtils.degToRad(wristTarget.y), lerpFactor);
+
+                wristPivot.rotation.x = wristCurrent.x;
+                wristPivot.rotation.y = wristCurrent.y;
+            }
+
+            // Subtle idle breathing float when not waving
+            handRoot.position.y = Math.sin(elapsedTime * 1.6) * 0.04;
+
+            // Update each finger's 3 phalanges
+            fingerConfigs.forEach(cfg => {
+                const st = fingerState[cfg.id];
+                const rig = fingerRigs[cfg.id];
+
+                st.curl = THREE.MathUtils.lerp(st.curl, st.targetCurl, lerpFactor);
+                st.spread = THREE.MathUtils.lerp(st.spread, st.targetSpread, lerpFactor);
+
+                if (cfg.id === 'thumb') {
+                    // Thumb opposes across the palm (+Z / -Y rotation)
+                    rig.mcpJoint.rotation.z = -st.curl * 0.72 + st.spread * 0.35;
+                    rig.mcpJoint.rotation.x = st.curl * 0.55;
+                    rig.pipJoint.rotation.z = -st.curl * 0.85;
+                    rig.dipJoint.rotation.z = -st.curl * 0.75;
+                } else {
+                    // Standard fingers curl forward (+X rotation toward palm +Z)
+                    rig.mcpJoint.rotation.x = st.curl * 1.48;
+                    rig.mcpJoint.rotation.z = cfg.baseRotZ + st.spread * 0.32;
+                    rig.pipJoint.rotation.x = st.curl * 1.62;
+                    rig.dipJoint.rotation.x = st.curl * 1.15;
+                }
+            });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        /**
+         * Main Render Loop
+         */
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const elapsedTime = clock.getElapsedTime();
+
+            updateArticulation(elapsedTime, delta);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Start Application on Window Load
+        window.onload = function () {
+            initScene();
+            animate();
+        };
+    </script>
+</body>
+</html>
